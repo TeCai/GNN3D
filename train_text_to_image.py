@@ -245,6 +245,7 @@ def parse_args():
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing an image."
     )
+
     parser.add_argument(
         "--caption_column",
         type=str,

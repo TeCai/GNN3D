@@ -1,0 +1,94 @@
+
+#Path to pretrained model or model identifier from huggingface.co/models.
+pretrained_model_name_or_path: './'
+
+#The scale of input perturbation. Recommended 0.1.
+input_pertubation: 0.
+
+#Revision of pretrained model identifier from huggingface.co/models.
+revision: null
+
+#Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16"
+variant: null
+
+#Path containing data that can be processed by mvds dataset."
+data_path: './'
+
+#"For debugging purposes or quicker training, truncate the number of training examples to this "
+#"value if set."
+max_train_samples: null
+
+# indicators for validation datasets, to be changed further
+# TODO: change this
+validation_prompts: null
+
+# The output directory where the model predictions and checkpoints will be written.
+output_dir: "sd-model-finetuned"
+
+#The directory where the downloaded models and datasets will be stored.
+cache_dir: null
+
+# A seed for reproducible training
+seed: 42
+
+#"The resolution for input images, all the images in the train/validation dataset will be resized to this"
+#" resolution"
+resolution: 256
+
+# "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+#" cropped. The images will be resized to the resolution first before cropping."
+center_crop: No
+
+# "whether to randomly flip images horizontally"
+random_flip: No
+
+
+
+# Training
+#Batch size (per device) for the training dataloader.
+train_batch_size: 16
+num_train_epochs: 100
+max_train_steps: null #"Total number of training steps to perform.  If provided, overrides num_train_epochs."
+gradient_accumulation_steps: 1
+gradient_checkpoint: No #Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.
+learning_rate: 1e-4
+scale_lr: No #Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.
+lr_scheduler: "Constant" # The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]
+lr_warmup_steps: 500 #Number of steps for the warmup in the lr scheduler
+snr_gamma: null #SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. ""More details here: https://arxiv.org/abs/2303.09556.
+use_8bit_adam: No #"Whether or not to use 8-bit Adam from bitsandbytes.
+use_ema: No #Whether to use EMA model.
+non_ema_revision: null #str: Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or remote repository specified with --pretrained_model_name_or_path."
+dataloader_num_workers: 0
+logging_dir: "logs" # "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"" *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***.
+mixed_precision: null # ["No", "fp16", "bf16"]
+# Default to the value of accelerate config of the current system or the"
+#" flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config
+
+report_to: "tensorboard" # can be tensorboard, wandb, comet_ml
+local_rank: -1 #For distributed training: local_rank
+checkpointing_steps: 500 #Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"" training using `--resume_from_checkpoint`.
+checkpoints_total_limit: 5 # Max numebr of checkpoints to store
+resume_from_checkpoint: null #"Whether training should be resumed from a previous checkpoint. Use a path saved by"' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
+enable_xformers_memory_efficient_attention: No
+noise_offset: 0. #The scale of noise offset
+validation_epochs: 5 #Run validation every X epochs
+tracker_project_name: "image2image_fine_tune" #The `project_name` argument passed to Accelerator.init_trackers for" " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+
+
+#Optimizer Configurations
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 1e-2
+adam_epsilon: 1e-8
+max_grad_norm: 1.
+
+
+# huggingface configs
+push_to_hub: No #Whether or not to push the model to the Hub.
+hub_token: null #The token to use to push to the Model Hub.
+prediction_type: null #The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.
+hub_model_id: null #The name of the repository to keep in sync with the local `output_dir`
+
+
+

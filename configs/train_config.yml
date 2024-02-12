@@ -12,7 +12,7 @@ revision: null
 variant: null
 
 #Path containing data that can be processed by mvds dataset."
-data_path: './'
+train_data_dir: './'
 
 #"For debugging purposes or quicker training, truncate the number of training examples to this "
 #"value if set."
@@ -42,11 +42,15 @@ center_crop: No
 # "whether to randomly flip images horizontally"
 random_flip: No
 
+# used for debugging
+
+
+debug: Yes
 
 
 # Training
 #Batch size (per device) for the training dataloader.
-train_batch_size: 16
+train_batch_size: 2
 num_train_epochs: 100
 max_train_steps: null #"Total number of training steps to perform.  If provided, overrides num_train_epochs."
 gradient_accumulation_steps: 1

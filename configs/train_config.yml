@@ -1,6 +1,6 @@
 
 #Path to pretrained model or model identifier from huggingface.co/models.
-pretrained_model_name_or_path: './'
+pretrained_model_name_or_path: 'C:/Users/Xiang/.cache/huggingface/hub/models--flamehaze1115--wonder3d-v1.0/snapshots/d6d2efc033a06a74d3761268de7295c97e6935d2'
 
 #The scale of input perturbation. Recommended 0.1.
 input_pertubation: 0.
@@ -54,10 +54,10 @@ train_batch_size: 2
 num_train_epochs: 100
 max_train_steps: null #"Total number of training steps to perform.  If provided, overrides num_train_epochs."
 gradient_accumulation_steps: 1
-gradient_checkpoint: No #Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.
-learning_rate: 1e-4
+gradient_checkpointing: No #Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.
+learning_rate: 1.0e-4
 scale_lr: No #Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.
-lr_scheduler: "Constant" # The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]
+lr_scheduler: "constant" # The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]
 lr_warmup_steps: 500 #Number of steps for the warmup in the lr scheduler
 snr_gamma: null #SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. ""More details here: https://arxiv.org/abs/2303.09556.
 use_8bit_adam: No #"Whether or not to use 8-bit Adam from bitsandbytes.
@@ -65,9 +65,12 @@ use_ema: No #Whether to use EMA model.
 non_ema_revision: null #str: Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or remote repository specified with --pretrained_model_name_or_path."
 dataloader_num_workers: 0
 logging_dir: "logs" # "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"" *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***.
-mixed_precision: null # ["No", "fp16", "bf16"]
+mixed_precision: "fp16" # ["No", "fp16", "bf16"]
 # Default to the value of accelerate config of the current system or the"
 #" flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config
+allow_tf32: No
+input_perturbation: No
+
 
 report_to: "tensorboard" # can be tensorboard, wandb, comet_ml
 local_rank: -1 #For distributed training: local_rank
@@ -83,8 +86,8 @@ tracker_project_name: "image2image_fine_tune" #The `project_name` argument passe
 #Optimizer Configurations
 adam_beta1: 0.9
 adam_beta2: 0.999
-adam_weight_decay: 1e-2
-adam_epsilon: 1e-8
+adam_weight_decay: 1.0e-2
+adam_epsilon: 1.0e-8
 max_grad_norm: 1.
 
 

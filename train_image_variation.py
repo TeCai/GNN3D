@@ -141,6 +141,7 @@ def log_validation(vae, image_encoder, unet, args, accelerator, weight_dtype, ep
     if args.enable_xformers_memory_efficient_attention:
         pipeline.unet.enable_xformers_memory_efficient_attention()
 
+
     if args.seed is None:
         generator = None
     else:
@@ -197,7 +198,7 @@ def parse_args():
         cfg = yaml.safe_load(file)
     # cfg = yaml.safe_load(args.config_path)
     cfg.update({'config_path': args.config_path})
-    args = cfg
+    args = Dict2Class(cfg)
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -213,6 +214,11 @@ def parse_args():
 
     return args
 
+
+class Dict2Class(object):
+    def __init__(self, my_dict):
+        for key in my_dict:
+            setattr(self, key, my_dict[key])
 
 
 def main():
@@ -305,7 +311,7 @@ def main():
         vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
 
 
-    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, num_views=2, subfolder="unet",low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
 
     # Freeze vae and image_encoder and set unet to trainable
     vae.requires_grad_(False)
@@ -553,7 +559,7 @@ def main():
                 condition_latents = vae.encode(batch["image_cond_vae"].to(weight_dtype)).latent_dist.sample()
                 condition_latents = condition_latents * vae.config.scaling_factor
 
-                noisy_latents = torch.concatenate([noisy_latents, condition_latents])
+                noisy_latents = torch.concatenate([noisy_latents, condition_latents],dim=-3)
                 # Get the text embedding for conditioning
                 image_embeddings = image_encoder(batch["image_cond_CLIP"].to(weight_dtype))[0]
 
@@ -570,7 +576,7 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=image_embeddings, class_labels=batch["camera_embed"].to(weight_dtype)).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=image_embeddings.unsqueeze(1), class_labels=batch["camera_embed"].to(weight_dtype)).sample
 
 
                 if args.snr_gamma is None:

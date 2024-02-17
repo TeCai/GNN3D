@@ -657,7 +657,8 @@ class MVAttnProcessor:
         attention_mask=None,
         temb=None,
         num_views=1,
-        multiview_attention=True
+        multiview_attention=True,
+        **kwargs
     ):
         residual = hidden_states
 

@@ -435,6 +435,11 @@ class MVDiffusionImagePipeline(DiffusionPipeline):
             assert len(camera_embedding) == batch_size
         else:
             camera_embedding = self.camera_embedding.to(dtype)
+            # select embed according to num_views
+            indices = [i for i in range(self.num_views)]
+            indices.extend([i+6 for i in range(self.num_views)])
+            camera_embedding = camera_embedding[indices]
+            # not sure the if the following line is useful
             camera_embedding = repeat(camera_embedding, "Nv Nce -> (B Nv) Nce", B=batch_size//len(camera_embedding))
         camera_embeddings = self.prepare_camera_embedding(camera_embedding, do_classifier_free_guidance=do_classifier_free_guidance, num_images_per_prompt=num_images_per_prompt)
 

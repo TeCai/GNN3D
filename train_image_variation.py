@@ -8,6 +8,8 @@ import random
 import shutil
 from pathlib import Path
 import yaml
+from typing import Callable, List, Optional
+from PIL import Image
 
 import accelerate
 import datasets
@@ -25,6 +27,7 @@ from data.mvds import MVDataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
+from torchvision.utils import make_grid
 from tqdm.auto import tqdm
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from transformers.utils import ContextManagers
@@ -51,10 +54,10 @@ def save_model_card(
     repo_folder=None,
 ):
     img_str = ""
-    if len(images) > 0:
-        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
-        image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
-        img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
+    # if len(images) > 0:
+    #     image_grid = make_image_grid(images, 1, len(args.validation_prompts))
+    #     image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
+    #     img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
     yaml = f"""
 ---
@@ -73,7 +76,8 @@ inference: true
     model_card = f"""
 # image-variation finetuning - {repo_id}
 
-This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. 
+Below are some example images generated with the finetuned pipeline using the following prompts: 'null': \n
 {img_str}
 
 ## Pipeline usage
@@ -85,7 +89,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
-prompt = "{args.validation_prompts[0]}"
+prompt = "some-image"
 image = pipeline(prompt).images[0]
 image.save("my_image.png")
 ```
@@ -118,23 +122,32 @@ More information on all the CLI arguments and the environment are available on y
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
+def read_images_in_folder(folder_path):
+    images = []
+    for filename in os.listdir(folder_path):
+        if filename.endswith(('.jpg', '.jpeg', '.png', '.bmp')):  # Check for image file extensions
+            image_path = os.path.join(folder_path, filename)
+            image = Image.open(image_path).convert("RGB")
+            images.append(image)
+    return images
 
 
-def log_validation(vae, image_encoder, unet, args, accelerator, weight_dtype, epoch):
+
+def log_validation(vae, image_encoder, unet, scheduler, feature_extractor, args, accelerator, global_step):
     logger.info("Running validation... ")
-    pass
 
-    pipeline = MVDiffusionImagePipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=accelerator.unwrap_model(vae),
-        image_encoder=accelerator.unwrap_model(image_encoder),
-        unet=accelerator.unwrap_model(unet),
-        safety_checker=None,
-        revision=args.revision,
-        feature_extractor=None,
-        variant=args.variant,
-        torch_dtype=weight_dtype,
+    # building up a pipeline
+    pipeline = MVDiffusionImagePipeline(
+        vae = accelerator.unwrap_model(vae),
+        image_encoder = accelerator.unwrap_model(image_encoder),
+        unet = accelerator.unwrap_model(unet),
+        scheduler = scheduler,
+        safety_checker = None,
+        feature_extractor = accelerator.unwrap_model(feature_extractor),
+        requires_safety_checker = False,
+        num_views=args.num_views
     )
+
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -147,16 +160,17 @@ def log_validation(vae, image_encoder, unet, args, accelerator, weight_dtype, ep
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-# TODO: validation pipeline
+    
+    # read images from validation folder
+    images_pil = read_images_in_folder(args.validation_dir)
 
     images = []
-    for i in range(len(args.validation_prompts)):
+    for i in range(len(images_pil)):
         with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+            image = pipeline(images_pil[i], num_inference_steps=20, generator=generator, output_type='pt',
+                             guidance_scale=args.validation_guidance_scale, height=images_pil[i].size[0], width=images_pil[i].size[1]).images
 
-        images.append(image)
-
-# end TODO
+        images.append(make_grid(image.cpu(), nrow = args.num_views, padding=0,value_range=(0,1)))
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
@@ -166,10 +180,10 @@ def log_validation(vae, image_encoder, unet, args, accelerator, weight_dtype, ep
             tracker.log(
                 {
                     "validation": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
+                        wandb.Image(image, caption=f"{i}")
                         for i, image in enumerate(images)
                     ]
-                }
+                }, step = global_step
             )
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
@@ -220,6 +234,11 @@ class Dict2Class(object):
         for key in my_dict:
             setattr(self, key, my_dict[key])
 
+
+
+def random_zero_replace(tensor: torch.Tensor, mask):
+    tensor[mask]=0
+    return tensor
 
 def main():
     print('startmain')
@@ -311,7 +330,7 @@ def main():
         vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
 
 
-    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, num_views=2, subfolder="unet",low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
+    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, num_views=args.num_views, subfolder="unet",low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
 
     # Freeze vae and image_encoder and set unet to trainable
     vae.requires_grad_(False)
@@ -321,8 +340,8 @@ def main():
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNetMV2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
-        )
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
+        num_views=args.num_views, low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNetMV2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
@@ -471,8 +490,11 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        tracker_config.pop("validation_prompts")
-        accelerator.init_trackers(args.tracker_project_name, tracker_config)
+        # tracker_config.pop("validation_prompts")
+        if args.report_to == 'wandb':
+            accelerator.init_trackers(args.tracker_project_name, tracker_config, init_kwargs = {"wandb": args.wandb_args})
+        else:
+            accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # processing the data, the image preprocess will be moved into training dataset.
 
@@ -559,9 +581,19 @@ def main():
                 condition_latents = vae.encode(batch["image_cond_vae"].to(weight_dtype)).latent_dist.sample()
                 condition_latents = condition_latents * vae.config.scaling_factor
 
-                noisy_latents = torch.concatenate([noisy_latents, condition_latents],dim=-3)
+                
                 # Get the text embedding for conditioning
                 image_embeddings = image_encoder(batch["image_cond_CLIP"].to(weight_dtype))[0]
+
+                # In order to enable classifier free guidance, randomly replace the conditions to zeros
+                mask = torch.rand(bsz) < args.p_uncond
+
+                condition_latents = random_zero_replace(condition_latents, mask)
+                image_embeddings = random_zero_replace(image_embeddings, mask)
+
+                noisy_latents = torch.concatenate([noisy_latents, condition_latents],dim=-3)
+
+
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -605,6 +637,10 @@ def main():
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+
+                # doneTODO: delete this
+                # optimizer.zero_grad()
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -615,6 +651,7 @@ def main():
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
+                #use sccelerator.log to log things
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
@@ -651,18 +688,20 @@ def main():
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+            if args.validation_dir is not None and (epoch % args.validation_epochs == 0 or global_step % args.validation_steps == 0):
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
+                print(epoch, global_step)
                 log_validation(
                     vae,
                     image_encoder,
                     unet,
+                    noise_scheduler,
+                    feature_extractor,
                     args,
                     accelerator,
-                    weight_dtype,
                     global_step,
                 )
                 if args.use_ema:

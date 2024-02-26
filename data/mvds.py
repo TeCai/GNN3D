@@ -7,21 +7,22 @@ import torch
 class MVDataset(Dataset):
     def __init__(self, args, Processor: lambda x:x):
         self.args = args
+        
         if self.args.debug:
-            self.image_cond = torch.randint(low = 0, high = 255, size = (101,3,256,256),dtype=torch.uint8)
-            self.image_target = torch.randint(low = 0, high = 255, size = (101,3,256,256),dtype=torch.uint8)
+            self.image_cond = torch.randint(low = 0, high = 255, size = (300,3,256,256),dtype=torch.uint8)
+            self.image_target = torch.randint(low = 0, high = 255, size = (300,3,256,256),dtype=torch.uint8)
             # self.image_cond = [transforms.ToPILImage()(image) for image in image_cond]
             # self.image_target = [transforms.ToPILImage()(image) for image in image_target]
-            self.camera_pose = torch.randn(size = (101,10))
+            self.camera_pose = torch.randn(size = (300,10))
             self.domain_switcher = torch.distributions.one_hot_categorical.OneHotCategorical(probs=torch.tensor(
-                [0.3,0.3,0.4])).sample(sample_shape=(101,))
+                [0.3,0.3,0.4])).sample(sample_shape=(300,))
             self.Processor = Processor
         else:
             raise NotImplementedError
 
 
     def __len__(self):
-        return 101 if self.args.debug else None
+        return 300 if self.args.debug else None
 
     def __getitem__(self, idx):
         return  {

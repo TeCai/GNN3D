@@ -1,37 +1,26 @@
 
 #Path to pretrained model or model identifier from huggingface.co/models.
+# Currently all pretrained models are from wonder3d for debug purposes
+#, will change them into image variation later while training.
 pretrained_model_name_or_path: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/wonder3d'
 
 # 'C:/Users/Xiang/.cache/huggingface/hub/models--flamehaze1115--wonder3d-v1.0/snapshots/d6d2efc033a06a74d3761268de7295c97e6935d2'
+# used for debugging
+debug: Yes
 
-#The scale of input perturbation. Recommended 0.1.
-input_pertubation: 0.
 
-#Revision of pretrained model identifier from huggingface.co/models.
-revision: null
 
-#Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16"
-variant: null
+
+
+
+
+# Training behaviors
 
 #Path containing data that can be processed by mvds dataset."
 train_data_dir: './'
 
-#"For debugging purposes or quicker training, truncate the number of training examples to this "
-#"value if set."
-max_train_samples: null
-
-# indicators for validation datasets, to be changed further
-# TODO: change this
-
-validation_dir: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/validation_debug'
-validation_guidance_scale: 1.0
-
-
 # The output directory where the model predictions and checkpoints will be written.
 output_dir: "sd-model-finetuned"
-
-#The directory where the downloaded models and datasets will be stored.
-cache_dir: null
 
 # A seed for reproducible training
 seed: 42
@@ -39,24 +28,8 @@ seed: 42
 #"The resolution for input images, all the images in the train/validation dataset will be resized to this"
 #" resolution"
 resolution: 256
-
-# "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-#" cropped. The images will be resized to the resolution first before cropping."
-center_crop: No
-
-# "whether to randomly flip images horizontally"
-random_flip: No
-
-# used for debugging
-
-
-debug: Yes
-
-
-# Training
-#Batch size (per device) for the training dataloader.
-num_views: 2
-train_batch_size: 2 # train_batchsize on each machine
+num_views: 2 # num_views of this unet
+train_batch_size: 2 # Batch size (per device) for the training dataloader.
 num_train_epochs: 100
 max_train_steps: 200 #"Total number of training steps to perform.  If provided, overrides num_train_epochs."
 gradient_accumulation_steps: 2
@@ -69,30 +42,36 @@ snr_gamma: null #SNR weighting gamma to be used if rebalancing the loss. Recomme
 use_8bit_adam: No #"Whether or not to use 8-bit Adam from bitsandbytes.
 use_ema: No #Whether to use EMA model.
 non_ema_revision: null #str: Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or remote repository specified with --pretrained_model_name_or_path."
-dataloader_num_workers: 0
+dataloader_num_workers: 2
 logging_dir: "logs" # "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"" *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***.
 mixed_precision: "fp16" # ["No", "fp16", "bf16"]
 # Default to the value of accelerate config of the current system or the"
 #" flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config
 allow_tf32: No
-input_perturbation: No
+input_perturbation: 0. # The scale of input noise perturbation. Recommended 0.1.
 p_uncond: 0.1 # The probability of randomly set conditions to 0 in training, when enabled, we can use classifier free guidance
 
 
 # Logging and Validation
 
+# indicators for validation datasets, to be changed further, currently for every image in validation dir,
+# will run pipeline once and upload generated image/normal on wandb
+validation_dir: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/validation_debug'
+validation_guidance_scale: 1.0
+
+# wandb/trackers
+tracker_project_name: "image2image_fine_tune" #The `project_name` argument passed to Accelerator.init_trackers for" " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
 report_to: "wandb" # can be tensorboard, wandb, comet_ml
 wandb_args: {entity: tcno1, name: null} # change to your user name while using another user
 
-local_rank: -1 #For distributed training: local_rank
+local_rank: -1 #For distributed training: local_rank, don't change
 checkpointing_steps: 150 #Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"" training using `--resume_from_checkpoint`.
 checkpoints_total_limit: 5 # Max numebr of checkpoints to store
-resume_from_checkpoint: null #"Whether training should be resumed from a previous checkpoint. Use a path saved by"' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
+resume_from_checkpoint: latest #"Whether training should be resumed from a previous checkpoint. Use a path saved by"' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
 enable_xformers_memory_efficient_attention: Yes
 noise_offset: 0. #The scale of noise offset
 validation_epochs: 500 #Run validation every X epochs
 validation_steps: 100 # run validation every X steps, both arguments will work
-tracker_project_name: "image2image_fine_tune" #The `project_name` argument passed to Accelerator.init_trackers for" " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
 
 
 #Optimizer Configurations
@@ -111,3 +90,23 @@ hub_model_id: null #The name of the repository to keep in sync with the local `o
 
 
 
+
+# Others
+# "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+#" cropped. The images will be resized to the resolution first before cropping."
+center_crop: No
+
+# "whether to randomly flip images horizontally"
+random_flip: No
+#Revision of pretrained model identifier from huggingface.co/models.
+revision: null
+
+#Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16"
+variant: null
+
+#"For debugging purposes or quicker training, truncate the number of training examples to this "
+#"value if set."
+max_train_samples: null
+
+#The directory where the downloaded models and datasets will be stored.
+cache_dir: null

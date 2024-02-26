@@ -14,12 +14,15 @@ class MVDataset(Dataset):
             # self.image_cond = [transforms.ToPILImage()(image) for image in image_cond]
             # self.image_target = [transforms.ToPILImage()(image) for image in image_target]
             self.camera_pose = torch.randn(size = (300,10))
-            self.domain_switcher = torch.distributions.one_hot_categorical.OneHotCategorical(probs=torch.tensor(
-                [0.3,0.3,0.4])).sample(sample_shape=(300,))
+            # self.domain_switcher = torch.distributions.one_hot_categorical.OneHotCategorical(probs=torch.tensor(
+            #     [0.3,0.3,0.4])).sample(sample_shape=(300,))
             self.Processor = Processor
+            self.data_len = 300
         else:
             raise NotImplementedError
-
+        
+        assert self.data_len % (args.num_views*2) == 0, f'The length of data_len {self.data_len} must devide num_views{args.num_views}*2 '
+        
 
     def __len__(self):
         return 300 if self.args.debug else None

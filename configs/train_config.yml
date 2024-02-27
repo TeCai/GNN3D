@@ -2,6 +2,14 @@
 #Path to pretrained model or model identifier from huggingface.co/models.
 # Currently all pretrained models are from wonder3d for debug purposes
 #, will change them into image variation later while training.
+pretrained_path_vae: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/image_variation'
+pretrained_path_feature_extractor: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/image_variation'
+pretrained_path_image_encoder: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/image_variation'
+pretrained_path_scheduler: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/wonder3d'
+pretrained_config_path_unet: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/configs/unet_config.json'
+pretrained_weight_path_unet: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/image_variation'
+
+# pretrained_model_name_or_path is deprecated, please ignore
 pretrained_model_name_or_path: '/pfs/mt-1oY5F7/luoyihao/project/GNN3D/weights/wonder3d'
 
 # 'C:/Users/Xiang/.cache/huggingface/hub/models--flamehaze1115--wonder3d-v1.0/snapshots/d6d2efc033a06a74d3761268de7295c97e6935d2'
@@ -67,7 +75,7 @@ wandb_args: {entity: tcno1, name: null} # change to your user name while using a
 local_rank: -1 #For distributed training: local_rank, don't change
 checkpointing_steps: 150 #Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"" training using `--resume_from_checkpoint`.
 checkpoints_total_limit: 5 # Max numebr of checkpoints to store
-resume_from_checkpoint: latest #"Whether training should be resumed from a previous checkpoint. Use a path saved by"' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
+resume_from_checkpoint: null #"Whether training should be resumed from a previous checkpoint. Use a path saved by"' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
 enable_xformers_memory_efficient_attention: Yes
 noise_offset: 0. #The scale of noise offset
 validation_epochs: 500 #Run validation every X epochs

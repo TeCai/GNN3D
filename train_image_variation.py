@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from typing import Callable, List, Optional
 from PIL import Image
+import json
 
 import accelerate
 import datasets
@@ -33,6 +34,7 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from transformers.utils import ContextManagers
 from mvdiffusion.pipelines.pipeline_mvdiffusion_image import MVDiffusionImagePipeline
 from mvdiffusion.models.unet_mv2d_condition import UNetMV2DConditionModel
+from einops import rearrange, repeat
 
 import diffusers
 from diffusers.image_processor import VaeImageProcessor
@@ -201,7 +203,7 @@ def parse_args():
     parser.add_argument(
         "--config_path",
         type=str,
-        default='configs/train_config.yml',
+        default='/pfs/mt-1oY5F7/luoyihao/project/GNN3D/configs/train_config.yml',
         required=False,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -297,8 +299,8 @@ def main():
     # Load scheduler, image_encoder and models.
 
     # TODO: tobe continued
-    noise_scheduler = DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    feature_extractor = CLIPImageProcessor.from_pretrained(args.pretrained_model_name_or_path,
+    noise_scheduler = DDIMScheduler.from_pretrained(args.pretrained_path_scheduler, subfolder="scheduler")
+    feature_extractor = CLIPImageProcessor.from_pretrained(args.pretrained_path_feature_extractor,
                                                            subfolder="feature_extractor")
 
 
@@ -324,13 +326,20 @@ def main():
     # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(args.pretrained_model_name_or_path,
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained(args.pretrained_path_image_encoder,
                                                                       subfolder="image_encoder")
 
-        vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
+        vae = AutoencoderKL.from_pretrained(args.pretrained_path_vae, subfolder="vae")
 
 
-    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, num_views=args.num_views, subfolder="unet",low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
+    with open(args.pretrained_config_path_unet, 'r') as file:
+        unet_config = json.load(file)
+    unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_weight_path_unet, 
+                                                  num_views=args.num_views, 
+                                                  subfolder="unet",
+                                                  low_cpu_mem_usage=False,
+                                                  ignore_mismatched_sizes = True,
+                                                  **unet_config)
 
     # Freeze vae and image_encoder and set unet to trainable
     vae.requires_grad_(False)
@@ -339,9 +348,12 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = UNetMV2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
-        num_views=args.num_views, low_cpu_mem_usage=False,ignore_mismatched_sizes = True)
+        ema_unet = UNetMV2DConditionModel.from_pretrained(args.pretrained_weight_path_unet, 
+                                                  num_views=args.num_views, 
+                                                  subfolder="unet",
+                                                  low_cpu_mem_usage=False,
+                                                  ignore_mismatched_sizes = True,
+                                                  **unet_config)
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNetMV2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
@@ -552,8 +564,43 @@ def main():
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
+
+                # concat image target and normal target on batch dimension, this is in order to be compatible while cd_attn_mid or cd_attn_last is 
+                # enabled. batch["image_target_vae"] has shape (batch, num_views, channels, height, width), need to rearrange first two axis
+                # after arrange, batchsize will be batchsize*num_views*2 and grouped like
+
+                # [image_1_image_angle_1,
+                #  image_1_image_angle_2,
+                #  ...,
+                #  image_1_image_angle_num_views,
+                 
+                #  image_2_image_angle_1,
+                #  image_2_image_angle_2,
+                #  ...,
+                #  image_2_image_angle_{num_views},
+                 
+                #  ...
+                #  ...
+                #  image_{batch}_image_angle_{num_views},
+                #  -------------------------------------------------
+                #  image_1_normal_angle_1,
+                #  image_1_normal_angle_2,
+                #  ...,
+                #  image_1_normal_angle_{num_views},
+                 
+                #  image_2_normal_angle_1,
+                #  image_2_normal_angle_2,
+                #  ...,
+                #  image_2_normal_angle_{num_views},
+                 
+                #  ...
+                #  image_{batch}_normal_angle_{num_views}]
+
+
+                target_batch = torch.concat([rearrange(batch["image_target_vae"].to(weight_dtype),'b n ... -> (b n) ...'), 
+                                             rearrange(batch["normal_target_vae"].to(weight_dtype),'b n ... -> (b n) ...')],dim=0)
                 # Convert images to latent space
-                latents = vae.encode(batch["image_target_vae"].to(weight_dtype)).latent_dist.sample()
+                latents = vae.encode(target_batch).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -577,13 +624,21 @@ def main():
                 else:
                     noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # concate the noisy_latents and image_condition_latents
+                # concate the noisy_latents and image_condition_latents, image_cond_vae has (batch, channels, height, width), 
+                # need to make it to (batch*num_views, channels, height, width)
+                # duplicate condition image to num_views*2
+
                 condition_latents = vae.encode(batch["image_cond_vae"].to(weight_dtype)).latent_dist.sample()
+                condition_latents = repeat(condition_latents, 'b ... -> (b n) ...', n=args.num_views)
+                condition_latents = torch.concat([condition_latents]*2, dim = 0) # since the condition for normal output and image output are the same
                 condition_latents = condition_latents * vae.config.scaling_factor
 
                 
                 # Get the text embedding for conditioning
                 image_embeddings = image_encoder(batch["image_cond_CLIP"].to(weight_dtype))[0]
+                # duplicate image embedding
+                image_embeddings = repeat(image_embeddings, 'b ... -> (b n) ...', n=args.num_views)
+                image_embeddings = torch.concat([image_embeddings]*2, dim=0)
 
                 # In order to enable classifier free guidance, randomly replace the conditions to zeros
                 mask = torch.rand(bsz) < args.p_uncond
@@ -607,8 +662,13 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
+
+                # Prepare class labels
+                class_labels = torch.concat([rearrange(batch["camera_embed_image"].to(weight_dtype),'b n ... -> (b n) ...'),
+                                             rearrange(batch["camera_embed_normal"].to(weight_dtype),'b n ... -> (b n) ...')], 
+                                             dim=0)
                 # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=image_embeddings.unsqueeze(1), class_labels=batch["camera_embed"].to(weight_dtype)).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=image_embeddings.unsqueeze(1), class_labels=class_labels).sample
 
 
                 if args.snr_gamma is None:

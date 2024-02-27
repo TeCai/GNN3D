@@ -35,23 +35,31 @@ All training configs are stored in 'GNN3D/configs/training_config'.
 
 Notes:
 - Before training or debugging, please change the `wandb_args`'s entity to yours in training configs, logging and validation part.
+- For training code with annotations, refer to `train_image_variation.py` from row 502 in `main()` function.
 
 
 # Datasets
 Refer to `GNN3D/data/mvds.py`, which contains a dataset class for multi-view diffusion.
 
 For each batch, the dataset should return 
-- image_cond: The raw image which the model conditions on
-- image_target: The raw image which the model wish to generate, i.e y_pred
-- image_cond_vae: The processed image that are ready for vae to process.
-- image_cond_CLIP: The processed image that are ready for CLIPImageProcessor to proecess.
-- image_target_vae: The processed image that are ready for vae to process.
-- camera_embed: The embedded camera_embedding and domain switcher. (Has length 10 according to wonder3d)
+- image_cond: `[bsz, channel, height, width]` The raw image which the model conditions on
+- image_target: `[bsz, num_views, channel, height, width]` The raw image which the model wish to generate, i.e y_pred
+- normal_target: `[bsz, num_views, channel, height, width]` The raw normal image which the model wish to generate, i.e. y_pred in another domain.
+- image_cond_vae: `[bsz, channel, height, width]` The processed image that are ready for vae to process.
+- image_cond_CLIP: `[bsz, channel, height, width]` The processed image that are ready for CLIPImageProcessor to proecess.
+- image_target_vae: `[bsz, num_views, channel, height, width]` The processed image that are ready for vae to encode.
+- normal_target_vae: `[bsz, num_views, channel, height, width]` The processed normal image that are ready for vae to encode.
+- camera_embed_image: `[bsz, num_views, 10]` The embedded camera_embedding and domain switcher for the image data. (Has length 10 according to wonder3d)
+- camera_embed_normal: `[bsz, num_views, 10]` The embedded camera_embedding and domain switcher for normal data.
+
+
+
+
 
 ## Num_views setting and batch_size setting
-Please ensure batch size is the multiple of num_views*2. For example, if `num_views = 6`, then batchsize should at least be 12. For each 12 images, should be arranged like below:
 
-[image_view_1, ..., image_view_6, normal_view_1, ..., normal_view_6]
+
+Since attention is performed inside num_views data, the real batch size is larger than the setting. For example, if `num_views = 6`, and batch size is set to 2. Then the real batch size fed into network is `num_views*2*batch_size`, in order to be compatible with `cd_attention_mid` or `cd_attention_last` is `True` in unet's config.
 
 
 
